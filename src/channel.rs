@@ -111,9 +111,11 @@ pub enum CatchupType {
     Default,
     Append,
     Shift,
+    Timeshift,
     Flussonic,
     Fs,
     Xc,
+    Vod,
 }
 
 impl std::fmt::Display for CatchupType {
@@ -122,9 +124,11 @@ impl std::fmt::Display for CatchupType {
             Self::Default => write!(f, "default"),
             Self::Append => write!(f, "append"),
             Self::Shift => write!(f, "shift"),
+            Self::Timeshift => write!(f, "timeshift"),
             Self::Flussonic => write!(f, "flussonic"),
             Self::Fs => write!(f, "fs"),
             Self::Xc => write!(f, "xc"),
+            Self::Vod => write!(f, "vod"),
         }
     }
 }
