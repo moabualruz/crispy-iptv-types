@@ -1,8 +1,8 @@
-//! Stream URL types and validation.
+//! Stream URL types and protocol classification.
 
 use serde::{Deserialize, Serialize};
 
-/// A validated stream URL with detected protocol.
+/// A stream URL classified by protocol.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct StreamUrl {
     /// The raw URL string.
@@ -12,13 +12,23 @@ pub struct StreamUrl {
 }
 
 impl StreamUrl {
-    /// Parse a URL string and detect its streaming protocol.
+    /// Build a classified stream URL from a raw string.
+    ///
+    /// This constructor does not validate the URL beyond best-effort
+    /// protocol detection. Callers that need strict URL validation
+    /// should validate separately before storing or using the value.
     pub fn parse(url: &str) -> Self {
         let protocol = StreamProtocol::detect(url);
         Self {
             url: url.to_string(),
             protocol,
         }
+    }
+
+    /// Convenience constructor equivalent to [`StreamUrl::parse`].
+    pub fn new(url: impl Into<String>) -> Self {
+        let url = url.into();
+        Self::parse(&url)
     }
 }
 

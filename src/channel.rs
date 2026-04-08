@@ -68,6 +68,34 @@ pub struct PlaylistEntry {
     pub extras: HashMap<String, String>,
 }
 
+impl PlaylistEntry {
+    /// Return the canonical primary URL for this entry.
+    ///
+    /// Preference order:
+    /// 1. explicit `url`
+    /// 2. first item in `urls`
+    pub fn primary_url(&self) -> Option<&str> {
+        self.url.as_deref().or_else(|| self.urls.first().map(String::as_str))
+    }
+
+    /// Set the primary URL and keep `url` / `urls` aligned for callers that
+    /// still rely on both fields.
+    pub fn set_primary_url(&mut self, url: impl Into<String>) {
+        let url = url.into();
+        self.url = Some(url.clone());
+        if let Some(first) = self.urls.first_mut() {
+            *first = url;
+        } else {
+            self.urls.push(url);
+        }
+    }
+
+    /// Whether this entry carries any stream URL.
+    pub fn has_url(&self) -> bool {
+        self.primary_url().is_some()
+    }
+}
+
 /// Catchup / timeshift configuration for a channel.
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct CatchupConfig {
@@ -124,5 +152,32 @@ mod tests {
         let entry = PlaylistEntry::default();
         let json = serde_json::to_string(&entry).unwrap();
         assert!(!json.contains("extras"));
+    }
+
+    #[test]
+    fn primary_url_prefers_url_field() {
+        let entry = PlaylistEntry {
+            url: Some("http://example.com/primary".to_string()),
+            urls: SmallVec::from_iter([String::from("http://example.com/alt")]),
+            ..Default::default()
+        };
+        assert_eq!(entry.primary_url(), Some("http://example.com/primary"));
+    }
+
+    #[test]
+    fn primary_url_falls_back_to_urls() {
+        let entry = PlaylistEntry {
+            urls: SmallVec::from_iter([String::from("http://example.com/alt")]),
+            ..Default::default()
+        };
+        assert_eq!(entry.primary_url(), Some("http://example.com/alt"));
+    }
+
+    #[test]
+    fn set_primary_url_keeps_fields_aligned() {
+        let mut entry = PlaylistEntry::default();
+        entry.set_primary_url("http://example.com/live");
+        assert_eq!(entry.url.as_deref(), Some("http://example.com/live"));
+        assert_eq!(entry.urls.first().map(String::as_str), Some("http://example.com/live"));
     }
 }

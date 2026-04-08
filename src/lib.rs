@@ -14,10 +14,10 @@ pub mod vod;
 
 pub use channel::{CatchupConfig, CatchupType, PlaylistEntry};
 pub use epg::{
-    EpgAudio, EpgCredits, EpgEpisodeNumber, EpgIcon, EpgImage, EpgProgramme, EpgRating, EpgReview,
-    EpgStringWithLang, EpgVideo,
+    EpgAudio, EpgChannel, EpgCredits, EpgEpisodeNumber, EpgIcon, EpgImage, EpgProgramme,
+    EpgRating, EpgReview, EpgStringWithLang, EpgUrl, EpgVideo,
 };
 pub use error::IptvError;
 pub use resolution::Resolution;
 pub use stream::{StreamProtocol, StreamStatus, StreamUrl};
-pub use vod::VodEntry;
+pub use vod::{VodCategory, VodEntry, VodType};

@@ -172,6 +172,8 @@ pub struct EpgImage {
     pub image_type: Option<String>,
     pub size: Option<String>,
     pub orient: Option<String>,
+    /// Upstream image system/source identifier when available.
+    pub system: Option<String>,
 }
 
 /// Programme icon (typically a small thumbnail).
@@ -215,6 +217,13 @@ pub struct EpgReview {
     pub lang: Option<String>,
 }
 
+/// A URL value with an optional XMLTV `system` attribute.
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct EpgUrl {
+    pub value: String,
+    pub system: Option<String>,
+}
+
 /// An XMLTV channel definition.
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct EpgChannel {
@@ -224,13 +233,13 @@ pub struct EpgChannel {
     /// Single icon (backward compat).
     pub icon: Option<EpgIcon>,
     /// Single URL (backward compat).
-    pub url: Option<String>,
+    pub url: Option<EpgUrl>,
     /// Multiple icons.
     #[serde(default)]
     pub icons: SmallVec<[EpgIcon; 1]>,
     /// Multiple URLs.
     #[serde(default)]
-    pub urls: SmallVec<[String; 1]>,
+    pub urls: SmallVec<[EpgUrl; 1]>,
 }
 
 #[cfg(test)]

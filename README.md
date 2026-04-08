@@ -22,12 +22,15 @@ The crate re-exports the most commonly used types at the root:
 - `PlaylistEntry`
 - `CatchupConfig`
 - `CatchupType`
+- `EpgChannel`
 - `EpgProgramme`
 - `StreamUrl`
 - `StreamProtocol`
 - `StreamStatus`
 - `Resolution`
 - `VodEntry`
+- `VodType`
+- `VodCategory`
 - `IptvError`
 
 ## Installation
@@ -42,20 +45,19 @@ MSRV: Rust `1.85`
 ## Quick Start
 
 ```rust
-use crispy_iptv_types::{PlaylistEntry, StreamProtocol, StreamStatus, StreamUrl};
+use crispy_iptv_types::{PlaylistEntry, StreamProtocol, StreamUrl};
 
-let url = StreamUrl::new("http://example.com/live/cnn.m3u8").unwrap();
+let url = StreamUrl::new("http://example.com/live/cnn.m3u8");
 
-let entry = PlaylistEntry {
-    id: Some("cnn".into()),
+let mut entry = PlaylistEntry {
     name: Some("CNN".into()),
-    urls: smallvec::smallvec![url.raw.clone()],
-    stream_protocol: Some(StreamProtocol::Hls),
-    stream_status: Some(StreamStatus::Unknown),
+    tvg_id: Some("cnn.us".into()),
     ..Default::default()
 };
+entry.set_primary_url(url.url.clone());
 
-assert_eq!(entry.name.as_deref(), Some("CNN"));
+assert_eq!(url.protocol, StreamProtocol::Hls);
+assert_eq!(entry.primary_url(), Some("http://example.com/live/cnn.m3u8"));
 assert_eq!(entry.urls.len(), 1);
 ```
 
@@ -92,6 +94,8 @@ Use the higher-level crates for that:
 - types are protocol-neutral where possible
 - serde support is built in
 - compact strings and small vectors are used where they materially help payload-heavy IPTV data
+- `StreamUrl` classifies protocol; it does not perform full URL validation
+- `PlaylistEntry` still carries both `url` and `urls` for compatibility, but callers should prefer `primary_url()` and `set_primary_url()`
 
 ## Current Limitations
 
