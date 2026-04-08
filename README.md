@@ -1,63 +1,82 @@
 # crispy-iptv-types
 
-Protocol-agnostic IPTV domain types and shared vocabulary for the `crispy-*` Rust ecosystem.
+Protocol-agnostic IPTV domain types shared across the `crispy-*` Rust crates.
 
-## Status
+## What This Crate Is
 
-Early-stage extracted library from CrispyTivi. Intended to become the foundational crate used by protocol parsers, API clients, and IPTV tooling.
+`crispy-iptv-types` is the foundation crate for the rest of the ecosystem. It contains the common data model used by playlist parsers, EPG readers, provider clients, stream validators, and playlist tooling.
 
-## What This Crate Provides
+If you need a stable shared vocabulary for IPTV data without pulling in any app-specific persistence, FFI, or UI code, this is the crate to start with.
 
-- shared channel and playlist types
-- shared EPG data structures
-- shared VOD data structures
-- shared stream URL and status types
-- shared resolution model
-- shared protocol-neutral error surface
+## What It Contains
 
-## Why It Exists
+- playlist and channel-facing types in `channel`
+- EPG and XMLTV-facing types in `epg`
+- VOD-facing types in `vod`
+- stream URL, protocol, and status types in `stream`
+- video resolution helpers in `resolution`
+- a protocol-neutral error type in `error`
 
-Most IPTV crates need the same vocabulary:
-- playlist entries
-- stream URLs and protocols
-- EPG programmes
-- VOD metadata
-- catchup configuration
+The crate re-exports the most commonly used types at the root:
 
-This crate keeps that shared vocabulary in one place so parser/client/tool crates can compose cleanly without duplicating models.
+- `PlaylistEntry`
+- `CatchupConfig`
+- `CatchupType`
+- `EpgProgramme`
+- `StreamUrl`
+- `StreamProtocol`
+- `StreamStatus`
+- `Resolution`
+- `VodEntry`
+- `IptvError`
 
 ## Installation
 
 ```toml
 [dependencies]
-crispy-iptv-types = "0.1"
+crispy-iptv-types = "0.1.1"
 ```
+
+MSRV: Rust `1.85`
 
 ## Quick Start
 
 ```rust
-use crispy_iptv_types::{PlaylistEntry, StreamUrl};
+use crispy_iptv_types::{PlaylistEntry, StreamProtocol, StreamStatus, StreamUrl};
+
+let url = StreamUrl::new("http://example.com/live/cnn.m3u8").unwrap();
 
 let entry = PlaylistEntry {
     id: Some("cnn".into()),
     name: Some("CNN".into()),
-    url: StreamUrl::new("http://example.com/live/cnn.m3u8").unwrap(),
+    urls: smallvec::smallvec![url.raw.clone()],
+    stream_protocol: Some(StreamProtocol::Hls),
+    stream_status: Some(StreamStatus::Unknown),
     ..Default::default()
 };
 
 assert_eq!(entry.name.as_deref(), Some("CNN"));
+assert_eq!(entry.urls.len(), 1);
 ```
 
-## Core Modules
+## When To Use It
 
-- `channel` — playlist and channel-facing structures
-- `epg` — XMLTV/EPG-oriented structures
-- `vod` — movie/series/episode oriented structures
-- `stream` — stream URL, protocol, and liveness/status structures
-- `resolution` — video resolution model
-- `error` — shared protocol-neutral error type
+Use this crate when you need:
 
-## Intended Consumers
+- a common schema across multiple IPTV crates
+- conversions between protocol-specific parsers/clients and app-specific models
+- a shared EPG/playlist/VOD vocabulary
+
+## When Not To Use It
+
+Do not use this crate for:
+
+- storage models tied to a database schema
+- UI models
+- network client logic
+- parsing or serialization by itself
+
+Use the higher-level crates for that:
 
 - `crispy-m3u`
 - `crispy-xmltv`
@@ -68,13 +87,18 @@ assert_eq!(entry.name.as_deref(), Some("CNN"));
 - `crispy-media-probe`
 - `crispy-stream-checker`
 
-## Non-Goals
+## Design Notes
 
-- app-specific database models
-- Flutter/FFI concerns
-- persistence
-- transport-specific API clients
+- types are protocol-neutral where possible
+- serde support is built in
+- compact strings and small vectors are used where they materially help payload-heavy IPTV data
+
+## Current Limitations
+
+- this crate defines shared models only; it does not validate provider-specific business rules
+- field-level semantics can still vary by upstream protocol, so callers should normalize where needed
+- semver should be treated as pre-1.0 while the shared model surface is still settling
 
 ## License
 
-Review project licensing before public publication. This README draft does not finalize licensing policy.
+This repository currently ships with the same license and notice model as the parent CrispyTivi project. Review `LICENSE.md` and `NOTICE.md` before adopting it in downstream projects.
