@@ -26,6 +26,7 @@ The crate re-exports the most commonly used types at the root:
 - `EpgProgramme`
 - `StreamUrl`
 - `StreamProtocol`
+- `StreamFormat`
 - `StreamStatus`
 - `Resolution`
 - `VodEntry`
@@ -45,9 +46,9 @@ MSRV: Rust `1.85`
 ## Quick Start
 
 ```rust
-use crispy_iptv_types::{PlaylistEntry, StreamProtocol, StreamUrl};
+use crispy_iptv_types::{PlaylistEntry, StreamFormat, StreamProtocol, StreamUrl};
 
-let url = StreamUrl::new("http://example.com/live/cnn.m3u8");
+let url = StreamUrl::classify("http://example.com/live/cnn.m3u8");
 
 let mut entry = PlaylistEntry {
     name: Some("CNN".into()),
@@ -56,7 +57,8 @@ let mut entry = PlaylistEntry {
 };
 entry.set_primary_url(url.url.clone());
 
-assert_eq!(url.protocol, StreamProtocol::Hls);
+assert_eq!(url.protocol, StreamProtocol::Http);
+assert_eq!(url.format, StreamFormat::Hls);
 assert_eq!(entry.primary_url(), Some("http://example.com/live/cnn.m3u8"));
 assert_eq!(entry.urls.len(), 1);
 ```
@@ -94,8 +96,11 @@ Use the higher-level crates for that:
 - types are protocol-neutral where possible
 - serde support is built in
 - compact strings and small vectors are used where they materially help payload-heavy IPTV data
-- `StreamUrl` classifies protocol; it does not perform full URL validation
-- `PlaylistEntry` still carries both `url` and `urls` for compatibility, but callers should prefer `primary_url()` and `set_primary_url()`
+- `StreamUrl::classify` is best-effort classification; `StreamUrl::try_parse` performs strict URL validation
+- `StreamUrl` preserves transport (`StreamProtocol`) separately from stream format (`StreamFormat`)
+- `PlaylistEntry` uses `urls[0]` as the canonical primary URL, with `primary_url()` and `set_primary_url()` helpers
+- `EpgChannel` keeps singular `icon` / `url` compatibility fields, but `icons` / `urls` are canonical and can be normalized with `normalize_legacy_fields()`
+- `EpgProgramme` models a broader XMLTV subset including language, country, subtitles, rating icons, prior-showing metadata, and explicit length units
 
 ## Current Limitations
 

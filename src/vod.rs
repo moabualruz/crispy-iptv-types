@@ -140,4 +140,30 @@ mod tests {
         assert_eq!(VodType::Episode.to_string(), "episode");
         assert_eq!(VodType::Series.to_string(), "series");
     }
+
+    #[test]
+    fn vod_entry_roundtrips_through_serde() {
+        let entry = VodEntry {
+            id: "vod-1".into(),
+            name: "Example Movie".into(),
+            original_name: Some("Original Movie".into()),
+            stream_url: Some("http://example.com/movie.mkv".into()),
+            vod_type: VodType::Movie,
+            category_ids: vec!["movies".into(), "featured".into()],
+            is_adult: false,
+            ..Default::default()
+        };
+
+        let json = serde_json::to_string(&entry).unwrap();
+        let reparsed: VodEntry = serde_json::from_str(&json).unwrap();
+
+        assert_eq!(reparsed.id, "vod-1");
+        assert_eq!(reparsed.name, "Example Movie");
+        assert_eq!(
+            reparsed.stream_url.as_deref(),
+            Some("http://example.com/movie.mkv")
+        );
+        assert_eq!(reparsed.category_ids, vec!["movies", "featured"]);
+        assert_eq!(reparsed.vod_type, VodType::Movie);
+    }
 }

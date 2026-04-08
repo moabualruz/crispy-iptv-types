@@ -19,7 +19,12 @@ pub struct PlaylistEntry {
     /// Stream URLs for this entry.
     ///
     /// The first item is the canonical primary URL when present.
-    #[serde(default, skip_serializing_if = "SmallVec::is_empty")]
+    #[serde(
+        default,
+        skip_serializing_if = "SmallVec::is_empty",
+        alias = "url",
+        deserialize_with = "deserialize_urls"
+    )]
     pub urls: SmallVec<[String; 2]>,
 
     /// Display name.
@@ -76,8 +81,15 @@ impl PlaylistEntry {
     /// Set the primary URL.
     ///
     /// Replaces the first URL when one exists, otherwise inserts it.
+    /// Blank or whitespace-only URLs clear the primary URL slot.
     pub fn set_primary_url(&mut self, url: impl Into<String>) {
         let url = url.into();
+        if url.trim().is_empty() {
+            if !self.urls.is_empty() {
+                self.urls.remove(0);
+            }
+            return;
+        }
         if let Some(first) = self.urls.first_mut() {
             *first = url;
         } else {
@@ -87,8 +99,37 @@ impl PlaylistEntry {
 
     /// Whether this entry carries any stream URL.
     pub fn has_url(&self) -> bool {
-        self.primary_url().is_some()
+        self.primary_url().is_some_and(|url| !url.trim().is_empty())
     }
+}
+
+fn deserialize_urls<'de, D>(deserializer: D) -> Result<SmallVec<[String; 2]>, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    #[derive(Deserialize)]
+    #[serde(untagged)]
+    enum UrlField {
+        Single(String),
+        Multiple(Vec<String>),
+    }
+
+    let value = Option::<UrlField>::deserialize(deserializer)?;
+    let mut urls = SmallVec::new();
+
+    match value {
+        None => {}
+        Some(UrlField::Single(url)) => {
+            if !url.trim().is_empty() {
+                urls.push(url);
+            }
+        }
+        Some(UrlField::Multiple(values)) => {
+            urls.extend(values.into_iter().filter(|value| !value.trim().is_empty()));
+        }
+    }
+
+    Ok(urls)
 }
 
 /// Catchup / timeshift configuration for a channel.
@@ -178,6 +219,66 @@ mod tests {
     fn set_primary_url_keeps_fields_aligned() {
         let mut entry = PlaylistEntry::default();
         entry.set_primary_url("http://example.com/live");
-        assert_eq!(entry.urls.first().map(String::as_str), Some("http://example.com/live"));
+        assert_eq!(
+            entry.urls.first().map(String::as_str),
+            Some("http://example.com/live")
+        );
+    }
+
+    #[test]
+    fn has_url_rejects_blank_primary_url() {
+        let entry = PlaylistEntry {
+            urls: SmallVec::from_iter([String::new()]),
+            ..Default::default()
+        };
+        assert!(!entry.has_url());
+    }
+
+    #[test]
+    fn set_primary_url_blank_clears_first_url() {
+        let mut entry = PlaylistEntry {
+            urls: SmallVec::from_iter([
+                String::from("http://example.com/live"),
+                String::from("http://example.com/backup"),
+            ]),
+            ..Default::default()
+        };
+
+        entry.set_primary_url("   ");
+
+        assert_eq!(entry.primary_url(), Some("http://example.com/backup"));
+        assert_eq!(entry.urls.len(), 1);
+    }
+
+    #[test]
+    fn playlist_entry_deserializes_legacy_single_url_field() {
+        let entry: PlaylistEntry =
+            serde_json::from_str(r#"{"url":"http://example.com/live","name":"News"}"#).unwrap();
+
+        assert_eq!(entry.primary_url(), Some("http://example.com/live"));
+        assert_eq!(entry.name.as_deref(), Some("News"));
+    }
+
+    #[test]
+    fn playlist_entry_roundtrips_with_catchup() {
+        let entry = PlaylistEntry {
+            urls: SmallVec::from_iter([String::from("http://example.com/live")]),
+            name: Some("News".into()),
+            catchup: Some(CatchupConfig {
+                catchup_type: Some(CatchupType::Timeshift),
+                days: Some(7),
+                source: Some("http://example.com/archive/{utc}".into()),
+            }),
+            ..Default::default()
+        };
+
+        let json = serde_json::to_string(&entry).unwrap();
+        let reparsed: PlaylistEntry = serde_json::from_str(&json).unwrap();
+
+        assert_eq!(reparsed.primary_url(), Some("http://example.com/live"));
+        assert_eq!(
+            reparsed.catchup.and_then(|config| config.catchup_type),
+            Some(CatchupType::Timeshift)
+        );
     }
 }
