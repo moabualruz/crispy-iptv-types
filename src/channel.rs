@@ -16,10 +16,9 @@ use smallvec::SmallVec;
 /// convert into app-specific models.
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct PlaylistEntry {
-    /// Primary stream URL.
-    pub url: Option<String>,
-
-    /// Alternative stream URLs (multi-URL entries).
+    /// Stream URLs for this entry.
+    ///
+    /// The first item is the canonical primary URL when present.
     #[serde(default, skip_serializing_if = "SmallVec::is_empty")]
     pub urls: SmallVec<[String; 2]>,
 
@@ -70,19 +69,15 @@ pub struct PlaylistEntry {
 
 impl PlaylistEntry {
     /// Return the canonical primary URL for this entry.
-    ///
-    /// Preference order:
-    /// 1. explicit `url`
-    /// 2. first item in `urls`
     pub fn primary_url(&self) -> Option<&str> {
-        self.url.as_deref().or_else(|| self.urls.first().map(String::as_str))
+        self.urls.first().map(String::as_str)
     }
 
-    /// Set the primary URL and keep `url` / `urls` aligned for callers that
-    /// still rely on both fields.
+    /// Set the primary URL.
+    ///
+    /// Replaces the first URL when one exists, otherwise inserts it.
     pub fn set_primary_url(&mut self, url: impl Into<String>) {
         let url = url.into();
-        self.url = Some(url.clone());
         if let Some(first) = self.urls.first_mut() {
             *first = url;
         } else {
@@ -141,7 +136,7 @@ mod tests {
     #[test]
     fn default_entry_has_no_url() {
         let entry = PlaylistEntry::default();
-        assert!(entry.url.is_none());
+        assert!(entry.urls.is_empty());
         assert!(entry.name.is_none());
         assert!(entry.extras.is_empty());
         assert!(!entry.is_radio);
@@ -157,8 +152,10 @@ mod tests {
     #[test]
     fn primary_url_prefers_url_field() {
         let entry = PlaylistEntry {
-            url: Some("http://example.com/primary".to_string()),
-            urls: SmallVec::from_iter([String::from("http://example.com/alt")]),
+            urls: SmallVec::from_iter([
+                String::from("http://example.com/primary"),
+                String::from("http://example.com/alt"),
+            ]),
             ..Default::default()
         };
         assert_eq!(entry.primary_url(), Some("http://example.com/primary"));
@@ -177,7 +174,6 @@ mod tests {
     fn set_primary_url_keeps_fields_aligned() {
         let mut entry = PlaylistEntry::default();
         entry.set_primary_url("http://example.com/live");
-        assert_eq!(entry.url.as_deref(), Some("http://example.com/live"));
         assert_eq!(entry.urls.first().map(String::as_str), Some("http://example.com/live"));
     }
 }
