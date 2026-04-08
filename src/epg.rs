@@ -3,7 +3,8 @@
 //! These types are shared across XMLTV-oriented and provider-oriented crates.
 //! The XMLTV-facing structures preserve the subset of the XMLTV DTD that this
 //! ecosystem currently models explicitly, including programme metadata,
-//! ratings, subtitles, and channel URL/icon compatibility helpers.
+//! ordered credit-node content, ratings, subtitles, and channel URL/icon
+//! compatibility helpers.
 
 use serde::{Deserialize, Serialize};
 use smallvec::SmallVec;
@@ -171,26 +172,45 @@ pub struct EpgCredits {
     pub guest: SmallVec<[EpgPerson; 2]>,
 }
 
-/// A person with optional role, guest flag, and repeated media/link data.
+/// Ordered mixed content for an XMLTV credit node.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(tag = "kind", content = "value", rename_all = "snake_case")]
+pub enum EpgPersonContent {
+    Text(String),
+    Image(EpgImage),
+    Url(EpgUrl),
+}
+
+/// A person/credit entry with ordered XMLTV mixed content.
 #[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq, Eq)]
 pub struct EpgPerson {
-    pub name: String,
+    #[serde(default, skip_serializing_if = "SmallVec::is_empty")]
+    pub content: SmallVec<[EpgPersonContent; 1]>,
     pub role: Option<String>,
     #[serde(default)]
     pub guest: bool,
-    #[serde(default, skip_serializing_if = "SmallVec::is_empty")]
-    pub images: SmallVec<[String; 1]>,
-    #[serde(default, skip_serializing_if = "SmallVec::is_empty")]
-    pub urls: SmallVec<[String; 1]>,
 }
 
 impl EpgPerson {
+    pub fn primary_text(&self) -> Option<&str> {
+        self.content.iter().find_map(|content| match content {
+            EpgPersonContent::Text(value) => Some(value.as_str()),
+            _ => None,
+        })
+    }
+
     pub fn primary_image(&self) -> Option<&str> {
-        self.images.first().map(String::as_str)
+        self.content.iter().find_map(|content| match content {
+            EpgPersonContent::Image(image) => Some(image.url.as_str()),
+            _ => None,
+        })
     }
 
     pub fn primary_url(&self) -> Option<&str> {
-        self.urls.first().map(String::as_str)
+        self.content.iter().find_map(|content| match content {
+            EpgPersonContent::Url(url) => Some(url.value.as_str()),
+            _ => None,
+        })
     }
 }
 
@@ -251,10 +271,19 @@ pub struct EpgAudio {
 #[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq, Eq)]
 pub struct EpgReview {
     pub value: String,
-    pub review_type: Option<String>,
+    pub review_type: EpgReviewType,
     pub source: Option<String>,
     pub reviewer: Option<String>,
     pub lang: Option<String>,
+}
+
+/// XMLTV review types.
+#[derive(Debug, Clone, Copy, Default, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "lowercase")]
+pub enum EpgReviewType {
+    #[default]
+    Text,
+    Url,
 }
 
 /// A URL value with an optional XMLTV `system` attribute.
@@ -356,7 +385,7 @@ impl EpgChannel {
             if let Some(icon) = self.icon.clone() {
                 self.icons.push(icon);
             }
-        } else if self.icon.is_none() {
+        } else {
             self.icon = self.icons.first().cloned();
         }
 
@@ -364,7 +393,7 @@ impl EpgChannel {
             if let Some(url) = self.url.clone() {
                 self.urls.push(url);
             }
-        } else if self.url.is_none() {
+        } else {
             self.url = self.urls.first().cloned();
         }
     }
@@ -458,6 +487,43 @@ mod tests {
     }
 
     #[test]
+    fn epg_channel_plural_fields_win_conflicts_during_normalization() {
+        let mut channel = EpgChannel {
+            id: "ch1".into(),
+            icon: Some(EpgIcon {
+                src: "https://example.com/stale-icon.png".into(),
+                width: Some(10),
+                height: Some(10),
+            }),
+            url: Some(EpgUrl {
+                value: "https://example.com/stale-watch".into(),
+                system: Some("stale".into()),
+            }),
+            icons: SmallVec::from_iter([EpgIcon {
+                src: "https://example.com/canonical-icon.png".into(),
+                width: Some(100),
+                height: Some(50),
+            }]),
+            urls: SmallVec::from_iter([EpgUrl {
+                value: "https://example.com/canonical-watch".into(),
+                system: Some("official".into()),
+            }]),
+            ..Default::default()
+        };
+
+        channel.normalize_legacy_fields();
+
+        assert_eq!(
+            channel.icon.as_ref().map(|icon| icon.src.as_str()),
+            Some("https://example.com/canonical-icon.png")
+        );
+        assert_eq!(
+            channel.url.as_ref().map(|url| url.value.as_str()),
+            Some("https://example.com/canonical-watch")
+        );
+    }
+
+    #[test]
     fn set_primary_helpers_keep_channel_fields_in_sync() {
         let mut channel = EpgChannel::default();
         channel.set_primary_icon(EpgIcon {
@@ -519,6 +585,13 @@ mod tests {
                     height: None,
                 }]),
             }]),
+            review: SmallVec::from_iter([EpgReview {
+                value: "Warm and funny".into(),
+                review_type: EpgReviewType::Text,
+                source: Some("Example Times".into()),
+                reviewer: Some("Critic".into()),
+                lang: Some("en".into()),
+            }]),
             ..Default::default()
         };
 
@@ -535,31 +608,60 @@ mod tests {
             "https://example.com/rating.png"
         );
         assert_eq!(reparsed.url[0].system.as_deref(), Some("official"));
+        assert_eq!(reparsed.review[0].review_type, EpgReviewType::Text);
     }
 
     #[test]
-    fn epg_credits_roundtrip_preserves_roles_and_person_media() {
+    fn epg_credits_roundtrip_preserves_roles_and_ordered_person_content() {
         let credits = EpgCredits {
             director: SmallVec::from_iter([EpgPerson {
-                name: "Director".into(),
+                content: SmallVec::from_iter([
+                    EpgPersonContent::Text("Director".into()),
+                    EpgPersonContent::Url(EpgUrl {
+                        value: "https://example.com/director".into(),
+                        system: Some("official".into()),
+                    }),
+                    EpgPersonContent::Image(EpgImage {
+                        url: "https://example.com/director.jpg".into(),
+                        image_type: Some("person".into()),
+                        size: None,
+                        orient: None,
+                        system: Some("credits".into()),
+                    }),
+                ]),
                 role: None,
                 guest: false,
-                images: SmallVec::from_iter([String::from("https://example.com/director.jpg")]),
-                urls: SmallVec::from_iter([String::from("https://example.com/director")]),
             }]),
             adapter: SmallVec::from_iter([EpgPerson {
-                name: "Adapter".into(),
+                content: SmallVec::from_iter([
+                    EpgPersonContent::Image(EpgImage {
+                        url: "https://example.com/adapter.jpg".into(),
+                        image_type: Some("person".into()),
+                        size: None,
+                        orient: None,
+                        system: None,
+                    }),
+                    EpgPersonContent::Text("Adapter".into()),
+                    EpgPersonContent::Url(EpgUrl {
+                        value: "https://example.com/adapter".into(),
+                        system: None,
+                    }),
+                ]),
                 role: Some("translator".into()),
                 guest: false,
-                images: SmallVec::new(),
-                urls: SmallVec::from_iter([String::from("https://example.com/adapter")]),
             }]),
             editor: SmallVec::from_iter([EpgPerson {
-                name: "Editor".into(),
+                content: SmallVec::from_iter([EpgPersonContent::Text("Editor".into())]),
                 role: None,
                 guest: false,
-                images: SmallVec::new(),
-                urls: SmallVec::new(),
+            }]),
+            guest: SmallVec::from_iter([EpgPerson {
+                content: SmallVec::from_iter([EpgPersonContent::Url(EpgUrl {
+                    value: "https://example.com/guest-only".into(),
+                    system: Some("reference".into()),
+                })]),
+                role: None,
+                guest: true,
             }]),
             ..Default::default()
         };
@@ -571,7 +673,41 @@ mod tests {
             reparsed.director[0].primary_image(),
             Some("https://example.com/director.jpg")
         );
+        assert_eq!(reparsed.director[0].primary_text(), Some("Director"));
         assert_eq!(reparsed.adapter[0].role.as_deref(), Some("translator"));
-        assert_eq!(reparsed.editor[0].name, "Editor");
+        assert_eq!(
+            reparsed.adapter[0].primary_image(),
+            Some("https://example.com/adapter.jpg")
+        );
+        assert_eq!(reparsed.editor[0].primary_text(), Some("Editor"));
+        assert_eq!(
+            reparsed.guest[0].primary_url(),
+            Some("https://example.com/guest-only")
+        );
+        assert!(matches!(
+            reparsed.director[0].content[1],
+            EpgPersonContent::Url(_)
+        ));
+    }
+
+    #[test]
+    fn epg_review_type_is_required_and_constrained() {
+        let review: EpgReview = serde_json::from_str(
+            r#"{
+                "value":"https://example.com/review",
+                "review_type":"url",
+                "source":"Example Times"
+            }"#,
+        )
+        .unwrap();
+        assert_eq!(review.review_type, EpgReviewType::Url);
+
+        let missing = serde_json::from_str::<EpgReview>(r#"{"value":"missing type"}"#).unwrap_err();
+        assert!(missing.to_string().contains("review_type"));
+
+        let invalid =
+            serde_json::from_str::<EpgReview>(r#"{"value":"bad type","review_type":"html"}"#)
+                .unwrap_err();
+        assert!(invalid.to_string().contains("unknown variant"));
     }
 }

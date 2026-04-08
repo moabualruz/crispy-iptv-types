@@ -99,13 +99,16 @@ Use the higher-level crates for that:
 - `StreamUrl::classify` is best-effort classification; `StreamUrl::try_parse` performs strict URL validation
 - `StreamUrl` preserves transport (`StreamProtocol`) separately from stream format (`StreamFormat`)
 - `PlaylistEntry` uses `urls[0]` as the canonical primary URL, with `primary_url()` and `set_primary_url()` helpers
-- `EpgChannel` keeps singular `icon` / `url` compatibility fields, but `icons` / `urls` are canonical and can be normalized with `normalize_legacy_fields()`
+- `EpgChannel` keeps singular `icon` / `url` compatibility fields, but `icons` / `urls` are canonical; `normalize_legacy_fields()` now reconciles conflicts by mirroring the plural primary entry back into the singular field
+- `EpgPerson` now preserves ordered XMLTV mixed credit content through `EpgPersonContent::{Text, Image, Url}`, so image-only, url-only, and interleaved credit nodes no longer lose ordering
+- `EpgReview.review_type` is XMLTV-aligned and required via the constrained `EpgReviewType::{Text, Url}` enum
 - `EpgProgramme` models a broader XMLTV subset including language, country, subtitles, rating icons, prior-showing metadata, and explicit length units
 
 ## Current Limitations
 
 - this crate defines shared models only; it does not validate provider-specific business rules
 - field-level semantics can still vary by upstream protocol, so callers should normalize where needed
+- `EpgPerson` is intentionally XMLTV-centric now; downstream adapters that previously treated credits as a flat `name` plus side arrays should map from ordered `content`
 - semver should be treated as pre-1.0 while the shared model surface is still settling
 
 ## License

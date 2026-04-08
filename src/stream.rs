@@ -136,7 +136,7 @@ impl StreamFormat {
             return Self::from_url(&parsed);
         }
 
-        let lower = url.to_ascii_lowercase();
+        let lower = raw_path(url).to_ascii_lowercase();
         if lower.ends_with(".m3u8") {
             Self::Hls
         } else if lower.ends_with(".mpd") {
@@ -160,6 +160,11 @@ impl StreamFormat {
             Self::Unknown
         }
     }
+}
+
+fn raw_path(url: &str) -> &str {
+    let end = url.find(['?', '#']).unwrap_or(url.len());
+    &url[..end]
 }
 
 /// Result of checking a stream's availability.
@@ -216,6 +221,27 @@ mod tests {
         let stream = StreamUrl::classify("not a url");
         assert_eq!(stream.protocol, StreamProtocol::Unknown);
         assert_eq!(stream.format, StreamFormat::Unknown);
+    }
+
+    #[test]
+    fn detect_scheme_less_hls_with_query_suffix() {
+        let stream = StreamUrl::classify("live/channel.m3u8?token=abc123");
+        assert_eq!(stream.protocol, StreamProtocol::Unknown);
+        assert_eq!(stream.format, StreamFormat::Hls);
+    }
+
+    #[test]
+    fn detect_scheme_less_dash_with_fragment_suffix() {
+        let stream = StreamUrl::classify("manifests/event.mpd#primary");
+        assert_eq!(stream.protocol, StreamProtocol::Unknown);
+        assert_eq!(stream.format, StreamFormat::Dash);
+    }
+
+    #[test]
+    fn detect_scheme_less_transport_stream_with_query_and_fragment() {
+        let stream = StreamUrl::classify("segments/chunk.ts?token=abc#frag");
+        assert_eq!(stream.protocol, StreamProtocol::Unknown);
+        assert_eq!(stream.format, StreamFormat::TransportStream);
     }
 
     #[test]
