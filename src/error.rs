@@ -37,6 +37,10 @@ pub enum IptvError {
     #[error("unexpected response: {0}")]
     UnexpectedResponse(String),
 
+    /// Requested entity not found.
+    #[error("not found: {0}")]
+    NotFound(String),
+
     /// Timeout waiting for server response.
     #[error("timeout after {0}ms")]
     Timeout(u64),
